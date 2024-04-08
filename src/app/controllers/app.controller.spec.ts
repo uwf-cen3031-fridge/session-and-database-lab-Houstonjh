@@ -1,34 +1,70 @@
-import { describe, expect, it } from "@jest/globals";
-import request from "supertest";
-import express, { Application } from "express";
-import { AppController } from "./app.controller";
-import { HandlebarsMiddleware } from '../middleware/handlebars.middleware';
+import { Request, Response, Router } from "express";
+import { pino } from "pino";
+import { UserService } from '../../services/user.service';
 
-describe("AppController", () => {
-  let app: Application;
-  let controller: AppController;
+export class AppController {
+  public router: Router = Router();
+  private log: pino.Logger = pino();
 
-  // Run this code before every test
-  beforeAll(() => {
-    // Create an express instance for testing
-    app = express();
+  constructor(private userService: UserService) {
+    this.initializeRouter();
+  }
 
-    // Set up handlebars for our templating
-    HandlebarsMiddleware.setup(app);
+  private initializeRouter() {
+    this.router.get("/login", function (req, res) {
+      res.render("login");
+    });
 
-    // Our controller instance to test
-    controller = new AppController();
+    this.router.get("/logout", function (req:any, res) {
+      delete req.session.user;
+      res.render("login");
+    });
 
-    // Load the controller's router for testing
-    app.use(controller.router);
-  });
+    this.router.get("/signup", function (req, res) {
+      res.render("signup");
+    });
 
-  it("should return a welcome", async () => {
-    return request(app)
-      .get("/")
-      .then((res) => {
-        expect(res.statusCode).toEqual(200);
-        expect(res.text).toMatch(/Welcome to My Website/);
-      });
-  });
-});
+    this.router.post("/signup", async (req: any, res) => {
+      const user = await this.userService.createUser(req.body.username, req.body.email, req.body.password);
+      req.session.user = user;
+      res.redirect("/");
+    });
+
+    // Handle login form submissions
+    this.router.post("/processLogin", async (req: any, res) => {
+      const user = await this.userService.authenticateUser(req.body.username, req.body.password);
+      if (user) {
+        req.session.user = user;
+        res.redirect("/");
+      } else {
+        res.status(401).send("Invalid username or password");
+      }
+    });
+
+    // Enforce security
+    this.router.use((req: any, res, next) => {
+      // If the user is set in the session,
+      // pass them on
+      if (req.session.user) {
+        next();
+
+        // Otherwise, send them to the login page
+      } else {
+        res.render("login", {
+          error: "You need to log in first",
+        });
+      }
+    });
+
+    // Serve the home page
+    this.router.get("/", (req: any, res: Response) => {
+      try {
+        res.render("home", {
+          user: req.session.user,
+        });
+      } catch (err) {
+        this.log.error(err);
+      }
+    });
+  }
+}
