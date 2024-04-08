@@ -1,6 +1,6 @@
 import { Request, Response, Router } from "express";
 import { pino } from "pino";
-import { UserService } from '../../services/user.service';
+import { UserService } from '../public/services/user.service';
 
 
 export class AppController {

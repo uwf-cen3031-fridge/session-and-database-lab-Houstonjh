@@ -4,7 +4,8 @@ import express, { Application } from "express";
 import session from "express-session";
 import { AppController } from "./app.controller";
 import { HandlebarsMiddleware } from '../middleware/handlebars.middleware';
-import { UserService } from "../services/user.service";
+import { UserService } from "../public/services/user.service"; 
+
 import { mock, instance, when, anyString, anything, anyNumber, verify } from 'ts-mockito';
 
 describe("AppController", () => {
@@ -13,21 +14,25 @@ describe("AppController", () => {
   let mockedUserService:UserService = mock(UserService);
 
   // Setup function mocks
-  when(mockedUserService.createUser( anyString(), anyString(), anyString() )).thenResolve({
+when(mockedUserService.createUser(anyString(), anyString(), anyString())).thenCall(() => {
+  return Promise.resolve({
     id: 1,
     username: "testing",
-    email: "testing@testing.com",
+    email: "testing@test.com",
     password: "testing"
   });
+});
 
-  when(mockedUserService.authenticateUser( "baduser", "badPassword" )).thenResolve(null);
-  when(mockedUserService.authenticateUser( "testing", "password" )).thenResolve({
+when(mockedUserService.authenticateUser("baduser", "badPassword")).thenCall(() => null);
+
+when(mockedUserService.authenticateUser("testing", "password")).thenCall(() => {
+  return Promise.resolve({
     id: 1,
     username: "testing",
-    email: "testing@testing.com",
+    email: "testing@test.com",
     password: "testing"
   });
-
+});
 
   // Run this code before every test
   beforeAll(() => {

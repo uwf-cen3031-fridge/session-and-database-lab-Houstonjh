@@ -9,7 +9,7 @@ import { AppController } from "./controllers/app.controller";
 import { ErrorMiddleware } from "./middleware/error.middleware";
 import { HandlebarsMiddleware } from "./middleware/handlebars.middleware";
 
-import { UserService } from "../services/user.service";
+import { UserService } from "./public/services/user.service";
 
 class App {
   // Create an instance of express, called "app"
