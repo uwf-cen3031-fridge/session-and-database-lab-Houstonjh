@@ -1,70 +1,125 @@
-import { Request, Response, Router } from "express";
-import { pino } from "pino";
-import { UserService } from '../../services/user.service';
+import { describe, expect, it } from "@jest/globals";
+import request from "supertest";
+import express, { Application } from "express";
+import session from "express-session";
+import { AppController } from "./app.controller";
+import { HandlebarsMiddleware } from '../middleware/handlebars.middleware';
+import { UserService } from "../services/user.service";
+import { mock, instance, when, anyString, anything, anyNumber, verify } from 'ts-mockito';
 
-export class AppController {
-  public router: Router = Router();
-  private log: pino.Logger = pino();
+describe("AppController", () => {
+  let app: Application;
+  let controller: AppController;
+  let mockedUserService:UserService = mock(UserService);
 
-  constructor(private userService: UserService) {
-    this.initializeRouter();
-  }
+  // Setup function mocks
+  when(mockedUserService.createUser( anyString(), anyString(), anyString() )).thenResolve({
+    id: 1,
+    username: "testing",
+    email: "testing@testing.com",
+    password: "testing"
+  });
 
-  private initializeRouter() {
-    this.router.get("/login", function (req, res) {
-      res.render("login");
-    });
+  when(mockedUserService.authenticateUser( "baduser", "badPassword" )).thenResolve(null);
+  when(mockedUserService.authenticateUser( "testing", "password" )).thenResolve({
+    id: 1,
+    username: "testing",
+    email: "testing@testing.com",
+    password: "testing"
+  });
 
-    this.router.get("/logout", function (req:any, res) {
-      delete req.session.user;
-      res.render("login");
-    });
 
-    this.router.get("/signup", function (req, res) {
-      res.render("signup");
-    });
+  // Run this code before every test
+  beforeAll(() => {
+    // Create an express instance for testing
+    app = express();
 
-    this.router.post("/signup", async (req: any, res) => {
-      const user = await this.userService.createUser(req.body.username, req.body.email, req.body.password);
-      req.session.user = user;
-      res.redirect("/");
-    });
+    // Add body parser
+    app.use( express.urlencoded({extended: false}) );
 
-    // Handle login form submissions
-    this.router.post("/processLogin", async (req: any, res) => {
-      const user = await this.userService.authenticateUser(req.body.username, req.body.password);
-      if (user) {
-        req.session.user = user;
-        res.redirect("/");
-      } else {
-        res.status(401).send("Invalid username or password");
-      }
-    });
+    // Set up handlebars for our templating
+    HandlebarsMiddleware.setup(app);
 
-    // Enforce security
-    this.router.use((req: any, res, next) => {
-      // If the user is set in the session,
-      // pass them on
-      if (req.session.user) {
-        next();
+    // Get the mocked pokemon service for testing
+    const userService: UserService = instance(mockedUserService);
 
-        // Otherwise, send them to the login page
-      } else {
-        res.render("login", {
-          error: "You need to log in first",
-        });
-      }
-    });
+    // Our controller instance to test
+    controller = new AppController(userService);
 
-    // Serve the home page
-    this.router.get("/", (req: any, res: Response) => {
-      try {
-        res.render("home", {
-          user: req.session.user,
-        });
-      } catch (err) {
-        this.log.error(err);
-      }
-    });
-  }
-}
+    // Set up session for the user, based on cookies
+    app.use(
+      session({
+        secret: "keyboard cat",
+        resave: false,
+        saveUninitialized: true,
+        cookie: { secure: false },
+      })
+    );
+
+    // Load the controller's router for testing
+    app.use(controller.router);
+  });
+
+  it("should redirect to login", async () => {
+    return request(app)
+      .get("/")
+      .then((res) => {
+        expect(res.statusCode).toEqual(200);
+        expect(res.text).toMatch(/You need to log in first/);
+      });
+  });
+
+  it("should allow user signup", async () => {
+    // Set up the body to post
+    const body = {
+      username: "testing",
+      email: "test@test.com",
+      password: "password"
+    };
+        
+    return request(app)
+      .post("/signup")
+      .type('form')
+      .send(body)
+      .then((res) => {
+        expect(res.statusCode).toEqual(302);
+        expect(res.text).toMatch(/Redirecting to \//);
+      });
+  });
+
+  it("should reject an invalid login", async () => {
+    // Set up the body to post
+    const body = {
+      username: "baduser",
+      password: "badpassword"
+    };
+        
+    return request(app)
+      .post("/processLogin")
+      .type('form')
+      .send(body)
+      .then((res) => {
+        expect(res.statusCode).toEqual(401);
+        expect(res.text).toMatch(/Invalid username or password/);
+      });
+  });
+
+  it("should process a valid login", async () => {
+
+    // Set up the body to post
+    const body2 = {
+      username: "testing",
+      password: "password"
+    };
+        
+    return request(app)
+      .post("/processLogin")
+      .type('form')
+      .send(body2)
+      .then((res) => {
+        expect(res.statusCode).toEqual(302);
+        expect(res.text).toMatch(/Redirecting to \//);
+      });
+  });
+
+});
